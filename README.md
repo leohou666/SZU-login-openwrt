@@ -1,4 +1,4 @@
-# ⚡ srun-login ![Go](https://github.com/leohou666/SZU-login/workflows/Go/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/leohou666/SZU-login)](https://goreportcard.com/report/github.com/leohou666/SZU-login)
+# ⚡ srun-login ![Go](https://github.com/leohou666/SZU-login-openwrt/workflows/Go/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/leohou666/SZU-login-openwrt)](https://goreportcard.com/report/github.com/leohou666/SZU-login-openwrt)
 
 深圳大学校园网自动登录工具，支持深澜（srun）教学区和宿舍区，**原生支持 OpenWrt**。
 
@@ -66,7 +66,7 @@ debug:
 
 ### 下载预编译二进制
 
-从 [GitHub Actions Artifacts](https://github.com/leohou666/SZU-login/actions) 下载对应架构：
+从 [GitHub Actions Artifacts](https://github.com/leohou666/SZU-login-openwrt/actions) 下载对应架构：
 
 | 架构 | 文件名 |
 |------|--------|
