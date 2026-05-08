@@ -91,22 +91,48 @@ func LoadConfig() (*Config, error) {
 	return &config, nil
 }
 
-// CheckInternetConnectivity 检查是否能访问互联网
+// isNetworkAccessible 检查国内 IPv4 网络是否可达。
+// 强制使用 IPv4 拨号，避免 OpenClash 等代理通过 IPv6 造成误判。
 func isNetworkAccessible(testURLs []string, config *Config) bool {
 	timeoutSeconds := 5
 	if config.Debug.Enabled && config.Debug.Timeout > 0 {
 		timeoutSeconds = config.Debug.Timeout
 	}
+	timeout := time.Duration(timeoutSeconds) * time.Second
 
-    for _, url := range testURLs {
-        client := createHTTPClientWithIP("", time.Duration(timeoutSeconds)*time.Second, "")
-		client.Timeout = 5 * time.Second
-		resp, err := client.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return true
+	// 强制 IPv4，防止走 IPv6 代理误判为"已联网"
+	dialer := &net.Dialer{Timeout: timeout}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
+	}
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		// 不跟随重定向，generate_204 端点返回 204/302 均视为可达
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	for _, testURL := range testURLs {
+		resp, err := client.Get(testURL)
+		if err != nil {
+			if config.Debug.Enabled && config.Debug.VerboseNetworkDetection {
+				log.Info("[调试] 网络检测失败: %s, 错误: %v", testURL, err)
 			}
+			continue
+		}
+		resp.Body.Close()
+		if config.Debug.Enabled && config.Debug.VerboseNetworkDetection {
+			log.Info("[调试] 网络检测响应: %s, 状态码: %d", testURL, resp.StatusCode)
+		}
+		// generate_204 端点只有返回 204 才表示真正联网
+		// 302 是未登录时门户劫持的特征，不能视为可达
+		// 普通 URL（如 baidu）返回 200 才算可达
+		if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
+			return true
 		}
 	}
 	return false

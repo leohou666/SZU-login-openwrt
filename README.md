@@ -1,89 +1,119 @@
-# ⚡ srun-login ![Go](https://github.com/Sleepstars/SZU-login/workflows/Go/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/Sleepstars/SZU-login)](https://goreportcard.com/report/github.com/Sleepstars/SZU-login) [![Sourcegraph](https://img.shields.io/badge/view%20on-Sourcegraph-brightgreen.svg?logo=sourcegraph)](https://sourcegraph.com/github.com/Sleepstars/SZU-login)
+# ⚡ srun-login ![Go](https://github.com/leohou666/SZU-login/workflows/Go/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/leohou666/SZU-login)](https://goreportcard.com/report/github.com/leohou666/SZU-login)
 
-深圳大学校园网 Wi-Fi 登录 / 深澜（srun）校园网模拟登录
+深圳大学校园网自动登录工具，支持深澜（srun）教学区和宿舍区，**原生支持 OpenWrt**。
 
-2025 年寒假，教学区已经替换掉了老旧的 Dr.com 程序，更换了带有加密的深澜（srun）的程序，这个时候就需要用到这个工具了。
+## 特性
 
-## 新特性
+- `config.yaml` 配置文件，无需命令行传密码
+- 可指定服务器 IP，绕过 DNS 解析问题
+- 持续监控 + 断线自动重连
+- 强制 IPv4 检测，避免 OpenClash 等代理通过 IPv6 造成误判
+- OpenWrt 静态二进制，开箱即用
 
-- ✨ 支持 `config.yaml` 配置文件，无需在命令行中指定账号密码
-- ✨ 可指定服务器IP地址，解决DNS解析问题
-- ✨ 自动检测并适配教学区和宿舍区网络
-- ✨ 支持持续监控和自动重连功能
+## 快速开始
 
-## 开始使用
+编辑 `config.yaml`，然后：
 
-### 使用配置文件（推荐）
-
-1. 克隆项目
 ```bash
-git clone git@github.com:Sleepstars/SZU-login.git
+go build -o szu-login ./cmd/
+./szu-login
 ```
 
-2. 编辑 `config.yaml` 文件
-```yaml
-# 用户凭证
-credentials:
-  username: "123"  # 校园卡账号
-  password: "456"  # 校园卡密码
+### config.yaml 示例
 
-# 网络环境配置
+```yaml
+credentials:
+  username: "学号"
+  password: "密码"
+
 network:
-  # 教学区网络配置（深澜系统）
   teaching:
     enabled: true
     url: "https://net.szu.edu.cn/"
-    ip: "198.18.6.157"  # 可选：指定服务器IP，防止DNS解析问题
-  
-  # 宿舍区网络配置
+    ip: "172.31.63.36"  # 可选，防止 DNS 解析问题
+    ac_id: "12"
   dormitory:
-    enabled: true
+    enabled: false
     url: "http://172.30.255.42:801/eportal/portal/login/"
-    ip: ""  # 可选：指定服务器IP
+    ip: ""
 
-# 监控配置
 monitor:
-  enabled: true  # 是否启用持续监控
-  interval: 60   # 检查间隔（秒）
-  test_urls:     # 用于测试网络连通性的URL
-    - "https://www.baidu.com"
+  enabled: true
+  interval: 60
+  test_urls:            # 只用国内地址，避免 IPv6 代理误判
+    - "http://connect.rom.miui.com/generate_204"
+    - "http://wifi.vivo.com.cn/generate_204"
+
+debug:
+  enabled: false
+  verbose_network_detection: false
+  timeout: 10
 ```
 
-3. 编译项目
+### 命令行参数
+
+```
+--username / --password     凭据（覆盖配置文件）
+--host                      登录服务器 URL
+--teaching-ip               教学区服务器 IP
+--dormitory-ip              宿舍区服务器 IP
+-i / --interface            绑定网卡（Linux）
+```
+
+---
+
+## OpenWrt 部署
+
+### 下载预编译二进制
+
+从 [GitHub Actions Artifacts](https://github.com/leohou666/SZU-login/actions) 下载对应架构：
+
+| 架构 | 文件名 |
+|------|--------|
+| x86_64（软路由） | `szu-login-openwrt-x86_64` |
+| ARM64 | `szu-login-openwrt-aarch64` |
+| MIPS（小米/TP-Link 等） | `szu-login-openwrt-mipsle` |
+
+### 部署步骤
+
 ```bash
-go build cmd/srun-login.go
+# OpenWrt 默认无 sftp，需加 -O 使用旧协议
+scp -O szu-login-openwrt-x86_64 root@192.168.1.1:/root/szu-login
+scp -O config.yaml root@192.168.1.1:/root/config.yaml
+
+ssh root@192.168.1.1 "chmod +x /root/szu-login && /root/szu-login"
 ```
 
-4. 运行程序（使用配置文件）
+### 开机自启（procd）
+
+创建 `/etc/init.d/szu-login`：
+
+```sh
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    procd_set_param command /root/szu-login
+    procd_set_param respawn
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+```
+
 ```bash
-./srun-login
+chmod +x /etc/init.d/szu-login
+/etc/init.d/szu-login enable
+/etc/init.d/szu-login start
 ```
 
-### 命令行参数（兼容原有用法）
+### OpenWrt + OpenClash 注意事项
 
-```bash
-# 基本用法
-./srun-login --username=<REDACTED> --password=<REDACTED>
+`test_urls` 只填国内地址（miui/vivo 的 generate_204）。程序强制 IPv4 拨号，`generate_204` 返回 204 才视为联网，302（门户劫持）视为未登录需重新认证。
 
-# 指定服务器IP地址
-./srun-login --username=<REDACTED> --password=<REDACTED> --teaching-ip=198.18.6.157
-
-# 指定拨号网卡（Linux/OpenWRT）
-./srun-login -i eth1 --username=<REDACTED> --password=<REDACTED>
-```
-
-### 同时支持的命令行参数
-
-```
---host              指定登录服务器URL
---username          指定用户名
---password          指定密码
---teaching-ip       指定教学区服务器IP
---dormitory-ip      指定宿舍区服务器IP
---interface, -i     绑定到指定网卡（如 eth1），仅 Linux 有效
-```
-
-欢迎查看我的博客观看详细使用方法：[Sleepstars 的记录室](https://blog.sleepstars.net/archives/shen-zhen-da-xue-jiao-xue-qu-xiao-yuan-wang-windows-zi-dong-deng-lu-xin-shou-xiang-xi-lie-er)
+---
 
 ## License
 
